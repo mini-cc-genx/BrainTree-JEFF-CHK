@@ -286,14 +286,14 @@ def run_telegram_bot():
     app.run_polling()
 
 # ---------- FLASK WRAPPER FOR RENDER (does not touch your logic) ----------
-flask_app = Flask(name)
+flask_app = Flask(__name__)   # <-- FIXED: double underscores
 
 @flask_app.route('/')
 def health():
     return "Bot is running"
 
 # Start the bot in a background thread when Gunicorn loads the app
-if name != 'main':
+if __name__ != '__main__':
     thread = threading.Thread(target=run_telegram_bot, daemon=True)
     thread.start()
 else:
