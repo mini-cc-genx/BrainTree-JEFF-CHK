@@ -408,7 +408,8 @@ def run_telegram_bot():
     app.add_handler(CommandHandler("chk", single_check))
     app.add_handler(CommandHandler("mchk", multiple_check))
     print("🤖 Telegram bot started – polling...")
-    app.run_polling(signal_handlers=False)
+    # Use stop_signals=() to disable signal handlers in background thread
+    app.run_polling(stop_signals=())
 
 if __name__ != '__main__':
     thread = threading.Thread(target=run_telegram_bot, daemon=True)
