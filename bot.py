@@ -9,16 +9,22 @@ import time
 import logging
 import threading
 from flask import Flask
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
+from datetime import datetime
 
-# ---------- YOUR ORIGINAL VARIABLES (unchanged) ----------
+# ---------- HARDCODED CONFIG ----------
 EMAIL = "00t0a9@givememail.club"
 PASSWORD = "Lundka143"
-BOT_TOKEN = "8847503899:AAF3tRSvu-1aOJQSBG33mH3zyOD3oU5VjH0"          # replace with your bot token
-ALLOWED_USER_ID = 8914467916                # replace with your Telegram user ID
+BOT_TOKEN = "8847503899:AAF3tRSvu-1aOJQSBG33mH3zyOD3oU5VjH0"   # <-- Replace with your bot token
 
 logging.basicConfig(level=logging.INFO)
+start_time = datetime.now()
 
-# ---------- ALL YOUR ORIGINAL FUNCTIONS (exactly as provided) ----------
+# ---------- FOOTER FOR ALL MESSAGES ----------
+FOOTER = "\n\n━━━━━━━━━━━━━━━━\n✨ *Made By : @AnonymousJxksh* ✨"
+
+# ---------- YOUR ORIGINAL FUNCTIONS (COMPLETELY UNCHANGED) ----------
 def h1():
     return {
         'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36',
@@ -237,62 +243,173 @@ async def proc(s, cc, mm, yy, cv):
     if not pt: return False, "TOKENIZE FAILED"
     return add_pm(s, pt, an)
 
-# ---------- TELEGRAM HANDLER (only structural wrapper, logic unchanged) ----------
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+# ---------- TELEGRAM HANDLERS (enhanced UI + footer) ----------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 *Welcome to Card Check Bot*\n\n"
+        "I can validate your cards via Braintree.\n\n"
+        "📌 *Available Commands:*\n"
+        "• `/chk` – Check a single card\n"
+        "• `/mchk` – Check multiple cards from a `.txt` file\n"
+        "• `/status` – Bot uptime & health\n"
+        "• `/help` – Detailed usage guide\n\n"
+        "🔐 *All transactions are secure and private.*" + FOOTER,
+        parse_mode="Markdown"
+    )
 
-async def check_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if ALLOWED_USER_ID and user_id != ALLOWED_USER_ID:
-        await update.message.reply_text("Unauthorized user.")
-        return
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📖 *Detailed Usage*\n\n"
+        "➡️ *Single Card Check*\n"
+        "`/chk <card_number|expiry_month|expiry_year|cvv>`\n"
+        "Example: `/chk 4111111111111111|12|26|123`\n\n"
+        "➡️ *Bulk Check (from file)*\n"
+        "Send a `.txt` file with one card per line in the **same format**.\n"
+        "Example:\n"
+        "`4111111111111111|12|26|123`\n"
+        "`5555555555554444|01|27|456`\n\n"
+        "➡️ *Status*\n"
+        "`/status` – Shows uptime and health.\n\n"
+        "⚡ *Results are returned instantly.*" + FOOTER,
+        parse_mode="Markdown"
+    )
 
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uptime = datetime.now() - start_time
+    await update.message.reply_text(
+        f"🟢 *Bot is online & healthy*\n"
+        f"⏱️ Uptime: `{str(uptime).split('.')[0]}`\n"
+        f"👤 Public access: *Enabled*" + FOOTER,
+        parse_mode="Markdown"
+    )
+
+async def single_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /check <card_number|expiry_month|expiry_year|cvv>")
+        await update.message.reply_text(
+            "❌ *Missing card details*\n\n"
+            "Correct format:\n"
+            "`/chk <number|month|year|cvv>`\n"
+            "Example: `/chk 4111111111111111|12|26|123`" + FOOTER,
+            parse_mode="Markdown"
+        )
         return
 
     raw = ' '.join(context.args).strip()
     parts = raw.split('|')
     if len(parts) != 4:
-        await update.message.reply_text("Invalid format. Use: /check 4111111111111111|12|26|123")
+        await update.message.reply_text(
+            "❌ *Invalid format*\n\n"
+            "Use: `/chk 4111111111111111|12|26|123`" + FOOTER,
+            parse_mode="Markdown"
+        )
         return
 
     cc, mes, ano, cvv = [p.strip() for p in parts]
-
-    # Basic validation to avoid crashes – does not affect success/failure logic
     if not (cc.isdigit() and mes.isdigit() and ano.isdigit() and cvv.isdigit()):
-        await update.message.reply_text("All fields must be numeric.")
+        await update.message.reply_text(
+            "❌ *All fields must be numeric*" + FOOTER,
+            parse_mode="Markdown"
+        )
         return
 
-    await update.message.reply_text("Processing card... (this may take 30-60s)")
-
+    msg = await update.message.reply_text("⏳ *Processing card…* (30‑60s)", parse_mode="Markdown")
     try:
         s = login()
         if not s:
-            await update.message.reply_text("❌ LOGIN FAILED")
+            await msg.edit_text("❌ *Login failed* – check credentials." + FOOTER, parse_mode="Markdown")
             return
-        ok, msg = await proc(s, cc, mes, ano, cvv)
-        if ok:
-            await update.message.reply_text(f"✅ Response: {msg}")
-        else:
-            await update.message.reply_text(f"❌ Response: {msg}")
+        ok, result = await proc(s, cc, mes, ano, cvv)
+        icon = "✅" if ok else "❌"
+        await msg.edit_text(
+            f"{icon} *Result:* `{result}`\n"
+            f"📋 Card: `{cc[-4:]}` (ends with {cc[-4:]})" + FOOTER,
+            parse_mode="Markdown"
+        )
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Error: {str(e)}")
+        await msg.edit_text(f"⚠️ *Error:* `{str(e)}`" + FOOTER, parse_mode="Markdown")
 
-def run_telegram_bot():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("check", check_card))
-    print("Telegram bot is polling...")
-    app.run_polling()
+async def multiple_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.document:
+        await update.message.reply_text(
+            "📎 *Please send a `.txt` file* with one card per line.\n\n"
+            "Format:\n"
+            "`number|month|year|cvv`\n\n"
+            "Example:\n"
+            "`4111111111111111|12|26|123`" + FOOTER,
+            parse_mode="Markdown"
+        )
+        return
 
-# ---------- FLASK WRAPPER FOR RENDER (does not touch your logic) ----------
-flask_app = Flask(__name__)   # <-- FIXED: double underscores
+    doc = update.message.document
+    if not doc.file_name.endswith('.txt'):
+        await update.message.reply_text(
+            "❌ *Only `.txt` files are accepted.*" + FOOTER,
+            parse_mode="Markdown"
+        )
+        return
+
+    msg = await update.message.reply_text("⏳ *Downloading & processing file…*", parse_mode="Markdown")
+    try:
+        file = await doc.get_file()
+        content = await file.download_as_bytearray()
+        lines = content.decode('utf-8').strip().splitlines()
+        if not lines:
+            await msg.edit_text("❌ *File is empty.*" + FOOTER, parse_mode="Markdown")
+            return
+
+        results = []
+        total = len(lines)
+        for idx, line in enumerate(lines, 1):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split('|')
+            if len(parts) != 4:
+                results.append(f"Line {idx}: ⚠️ Invalid format (skipped)")
+                continue
+            cc, mes, ano, cvv = [p.strip() for p in parts]
+            if not (cc.isdigit() and mes.isdigit() and ano.isdigit() and cvv.isdigit()):
+                results.append(f"Line {idx}: ⚠️ Non‑numeric (skipped)")
+                continue
+
+            s = login()
+            if not s:
+                results.append(f"Line {idx}: ❌ Login failed")
+                continue
+            ok, res = await proc(s, cc, mes, ano, cvv)
+            icon = "✅" if ok else "❌"
+            results.append(f"Line {idx}: {icon} {res}")
+            await asyncio.sleep(2)  # gentle delay
+
+        # Build final summary
+        summary = "📊 *Bulk Results*\n\n" + "\n".join(results) + FOOTER
+        if len(summary) > 4000:
+            for i in range(0, len(summary), 4000):
+                await update.message.reply_text(summary[i:i+4000], parse_mode="Markdown")
+        else:
+            await msg.edit_text(summary, parse_mode="Markdown")
+
+    except Exception as e:
+        await msg.edit_text(f"⚠️ *Error:* `{str(e)}`" + FOOTER, parse_mode="Markdown")
+
+# ---------- FLASK APP ----------
+flask_app = Flask(__name__)
 
 @flask_app.route('/')
 def health():
     return "Bot is running"
 
-# Start the bot in a background thread when Gunicorn loads the app
+# ---------- START BOT ----------
+def run_telegram_bot():
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("status", status))
+    app.add_handler(CommandHandler("chk", single_check))
+    app.add_handler(CommandHandler("mchk", multiple_check))
+    print("🤖 Telegram bot started – polling...")
+    app.run_polling(signal_handlers=False)
+
 if __name__ != '__main__':
     thread = threading.Thread(target=run_telegram_bot, daemon=True)
     thread.start()
